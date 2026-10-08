@@ -59,7 +59,7 @@ The script uses the logged-in WHM root session (the `cpsess` token already in th
 cp -a /usr/local/cpanel/whostmgr/docroot/cgi/whmreseller /root/whmreseller-backup-$(date +%F)
 
 # 2. Get the scripts
-git clone https://github.com/<your-username>/whmreseller-cplimit-fix.git
+git clone https://github.com/Sajibekanti/whmreseller-cplimit-fix.git
 cd whmreseller-cplimit-fix
 
 # 3. Apply the fix
