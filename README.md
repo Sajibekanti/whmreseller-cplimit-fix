@@ -22,15 +22,20 @@ This is a **display bug only**. The limits are set and enforced correctly:
 
 The plugin's compiled binary (`subreseller.cgi`) never fills the `$CPLIMIT` placeholder for WHM-type resellers. It has no cache file for that value, so the template falls back to `∞`.
 
+### Why this matters: the Edit form can remove limits
+
+The **Edit WHM** form has the same bug. Its **CPanel Limit** field loads as `unlimited`. When you save the form, for example to change only the disk limit, the plugin sends that value back to WHM, and the reseller's real account limit is likely **removed**. A display bug can therefore become a real unlimited reseller.
+
 ## How the fix works
 
-The binary can't be edited, but it reads plain-text templates. `fix-cplimit.sh` makes two changes:
+The binary can't be edited, but it reads plain-text templates. `fix-cplimit.sh` patches three of them:
 
-1. **`templates/whmentry`**: wraps the `$CPUSED / $CPLIMIT` cell in tagged `<span>` elements that carry the reseller's username.
-2. **`templates/rootmainpage`**: appends a small script. When the page loads, it calls WHM's own JSON API (`acctcounts`) for each reseller and shows:
-   - the real account limit instead of `∞`
-   - the real active account count, taken from WHM
-   - **red** text for resellers at or over their limit
+1. **`templates/whmentry`** (list row): wraps the `$CPUSED / $CPLIMIT` cell in tagged `<span>` elements that carry the reseller's username.
+2. **`templates/editwhm`** (edit form): tags the CPanel Limit input with the reseller's username.
+3. **`templates/rootmainpage`**: appends a small script that calls WHM's own JSON API (`acctcounts`) and:
+   - shows the real account limit and active count in the list, in **red** when a reseller is at or over its limit
+   - **pre-fills the Edit form's CPanel Limit** with the real limit instead of `unlimited`
+   - **warns before saving** a reseller (edit, create, upgrade or downgrade) when CPanel Limit is empty or `unlimited`, so a limit isn't removed by accident
 
 The script uses the logged-in WHM root session (the `cpsess` token already in the page URL). No passwords, API tokens, or credentials are stored.
 
@@ -38,7 +43,7 @@ The script uses the logged-in WHM root session (the `cpsess` token already in th
 
 | File | Purpose |
 |---|---|
-| `fix-cplimit.sh` | Applies the patch. Safe to run more than once. |
+| `fix-cplimit.sh` | Applies the patch. Safe to run more than once: each run restores the originals and re-applies. |
 | `check-limits.sh` | Lists every reseller's real active count and limit from WHM. |
 
 ## Requirements
@@ -54,14 +59,17 @@ The script uses the logged-in WHM root session (the `cpsess` token already in th
 cp -a /usr/local/cpanel/whostmgr/docroot/cgi/whmreseller /root/whmreseller-backup-$(date +%F)
 
 # 2. Get the scripts
-git clone https://github.com/Sajibekanti/whmreseller-cplimit-fix.git
+git clone https://github.com/<your-username>/whmreseller-cplimit-fix.git
 cd whmreseller-cplimit-fix
 
 # 3. Apply the fix
 bash fix-cplimit.sh
 ```
 
-Then reload **WHM → Plugins → WHMReseller → WHM Resellers**. The CPs column should show real values such as `4 / 20`.
+Then reload **WHM → Plugins → WHMReseller → WHM Resellers** with Ctrl+F5:
+
+- The CPs column should show real values such as `4 / 20`.
+- **Action → Edit** should show the real number in CPanel Limit instead of `unlimited`.
 
 ## Check the real limits
 
@@ -86,17 +94,17 @@ whmapi1 setresellerlimits user=<reseller> enable_account_limit=1 account_limit=2
 
 ## Undo
 
-The patch keeps `.orig` copies of both templates:
+The patch keeps `.orig` copies of every template it changes:
 
 ```bash
 cd /usr/local/cpanel/whostmgr/docroot/cgi/whmreseller/templates
-cp -a whmentry.orig whmentry
-cp -a rootmainpage.orig rootmainpage
+for f in whmentry editwhm rootmainpage; do cp -a $f.orig $f; done
 ```
 
 ## Notes
 
-- This changes the **display only**. It doesn't change any limits.
+- The patch doesn't change any limits itself. It shows the real values and stops the Edit form from saving `unlimited` by accident.
+- After editing any reseller, run `bash check-limits.sh` to confirm the limit is still set.
 - Only the root view (`rootmainpage`) is patched. Alpha and Master reseller views are unchanged.
 - A plugin update or reinstall may overwrite the templates. If that happens, run `bash fix-cplimit.sh` again.
 - If the column still shows `∞`, open the browser console (F12 → Console) and check for errors.
